@@ -1,0 +1,23 @@
+{
+  // Fixa o interpretador no venv do projeto, para não precisar escolher
+  // manualmente toda vez que abrir a pasta numa máquina nova.
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+
+  // Os testes aqui são scripts (main() com print, não pytest/unittest), então
+  // a aba "Testing" do VSCode não os enxerga. Use F5 com uma das
+  // configurações "Testes: ..." do launch.json, ou a task "Rodar todos os
+  // testes" (Ctrl+Shift+P -> Tasks: Run Task).
+  "python.testing.pytestEnabled": false,
+  "python.testing.unittestEnabled": false,
+
+  // Evita indexar o venv e os arquivos gerados — deixa a busca e o
+  // IntelliSense mais rápidos.
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true
+  },
+  "search.exclude": {
+    ".venv": true,
+    "**/__pycache__": true
+  }
+}

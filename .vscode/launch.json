@@ -1,0 +1,382 @@
+{
+  // Abra a pasta robo-desviador no VSCode (não a pasta pai), senão o
+  // ${workspaceFolder} aponta pro lugar errado e o venv não é encontrado.
+  //
+  // Antes do primeiro F5: Ctrl+Shift+P -> "Python: Select Interpreter"
+  // -> .venv\Scripts\python.exe
+  //
+  // Se a sua extensão Python for antiga, troque "debugpy" por "python".
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // "module" em vez de "program": tudo aqui roda como pacote (-m robo.game).
+      // Apontar pro arquivo solto quebraria os imports relativos.
+      "name": "Jogar",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "robo.game",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Jogar (escolher pista)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "robo.game",
+      "args": ["--pista", "${input:pista}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // Útil para inspecionar o eco perdido: ponha um breakpoint em
+      // robo/sensors.py, dentro de _disparar, e olhe `t` e `cos_inc`.
+      "name": "Jogar (diagonais, 5 sensores)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "robo.game",
+      "args": ["--pista", "diagonais", "--sensores", "5"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Editor de pista",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "robo.editor",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Editor (abrir pista embutida)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "robo.editor",
+      "args": ["--abrir", "${input:pista}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Editor (abrir pista salva em tracks/)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "robo.editor",
+      "args": ["--abrir", "${input:arquivoPista}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // A rede aleatória de exemplo, só para provar que o contrato Brain
+      // fecha. Ponha um breakpoint em brains/exemplo.py, dentro de
+      // act_batch, para ver a forma de obs e da saída ao vivo.
+      "name": "Rede de exemplo (com janela)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.exemplo",
+      "args": ["--ver", "--pista", "${input:pista}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Rede de exemplo (só telemetria, sem janela)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.exemplo",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // Sem --pista, pergunta no terminal qual pista usar (embutidas + as
+      // suas, de tracks/). Depois treina sem tela: só terminal e checkpoints/.
+      // Ctrl+C a qualquer momento — o último checkpoint é o ponto de retomada.
+      "name": "Treinar (escolher pista no menu)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.treino_ga",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Treinar (escolher pista embutida)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.treino_ga",
+      "args": ["--pista", "${input:pista}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Treinar (pista salva em tracks/)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.treino_ga",
+      "args": ["--pista", "${input:arquivoPista}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // Mesmos hiperparâmetros da classe; só grava noutra pasta, para uma
+      // sessão de depuração não misturar checkpoints com o seu treino bom.
+      // Ponha um breakpoint dentro de PopulacaoGA.evoluir, em
+      // brains/treino_ga.py, para ver o crossover e a mutação peso a peso.
+      "name": "Treinar (pasta separada, para depurar)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.treino_ga",
+      "args": ["--pasta", "checkpoints_teste"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Treinar (assistir ao campeão)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.treino_ga",
+      "args": ["--ver"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // O alvo de gerações vem da classe Hiperparametros. Se o checkpoint já
+      // passou desse número, o treino avisa e não faz nada — aí aumente
+      // `geracoes` na classe para continuar.
+      "name": "Treinar (continuar de um checkpoint)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.treino_ga",
+      "args": ["--continuar", "${input:arquivoCheckpoint}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // A população inteira treinando, ao vivo — não só a campeã.
+      //
+      // Não fixa nenhum valor de propósito: população, camadas, gerações e a
+      // frequência de exibição saem todos da classe Hiperparametros, em
+      // brains/treino_ga.py. Qualquer número cravado aqui sobrescreveria a
+      // classe em silêncio, que é justamente a confusão que queremos evitar.
+      //
+      // Só as gerações de exibição rodam na velocidade da tela; as demais
+      // treinam a toda. Aumente `ver_a_cada` na classe para assistir menos e
+      // treinar mais rápido.
+      "name": "Treinar (assistir a população inteira)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.treino_ga",
+      "args": ["--ver-populacao"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // Liga a GPU e mais nada: usa a população, as camadas e o resto que
+      // você definiu em Hiperparametros. É a opção certa para "quero treinar
+      // do meu jeito, mas na placa".
+      "name": "Treinar na GPU (com os seus valores)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.treino_ga",
+      "args": ["--dispositivo", "auto"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Treinar na GPU, assistindo a população inteira",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.treino_ga",
+      "args": ["--dispositivo", "auto", "--ver-populacao"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // Sem --rede, pega sozinha a última rede treinada (o melhor.npz mais
+      // recente em checkpoints/ ou modelos/). Roda em TODAS as pistas —
+      // embutidas e as suas — e no fim diz se a rede generalizou ou decorou.
+      "name": "Avaliar a última rede (todas as pistas)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.avaliar",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // Compara a pista de treino com a versão espelhada dela: mesmas curvas,
+      // para o outro lado. É o teste que separa "aprendeu a desviar" de
+      // "aprendeu a virar sempre para o mesmo lado".
+      "name": "Avaliar a última rede (dizendo onde treinou)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.avaliar",
+      "args": ["--treinada-em", "${input:pista}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Avaliar a última rede numa pista, assistindo",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.avaliar",
+      "args": ["--pistas", "${input:pista}", "--ver"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // Para as pistas que você desenhou: pede o caminho do .json em tracks/,
+      // já que o menu suspenso só lista as embutidas.
+      "name": "Avaliar a última rede numa pista sua, assistindo",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.avaliar",
+      "args": ["--pistas", "${input:arquivoPista}", "--ver"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Avaliar uma rede específica",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "brains.avaliar",
+      "args": ["--rede", "${input:arquivoRede}", "--treinada-em", "${input:pista}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // Você contra a última rede treinada, sem precisar digitar o caminho.
+      "name": "Corrida contra a última rede",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "robo.corrida",
+      "args": ["--ultima", "--pista", "${input:pista}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // Sem --rede: corre contra o adversário de regra fixa embutido.
+      "name": "Corrida (contra regra fixa)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "robo.corrida",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // Peça o caminho do .npz treinado toda vez que rodar.
+      "name": "Corrida (escolher rede treinada)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "robo.corrida",
+      "args": ["--rede", "${input:arquivoRede}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Testes: núcleo (física, sensores, colisão)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tests.test_nucleo",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Testes: editor",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tests.test_editor",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Testes: treino (contrato Brain, EpisodeRunner)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tests.test_training",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Testes: painel da rede",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tests.test_netviz",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Testes: calibragem",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tests.test_calibra",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Testes: salvar/carregar rede",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tests.test_persist",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Testes: corrida",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tests.test_corrida",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Testes: treino por neuroevolução",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tests.test_treino_ga",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Testes: desenho (render)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tests.test_render",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // Depurar o arquivo Python que estiver aberto no editor no momento,
+      // seja lá qual for — útil quando você já tem um brains/minha_rede.py
+      // próprio e quer rodar exatamente ele com F5.
+      "name": "Arquivo atual",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "pista",
+      "type": "pickString",
+      "description": "Qual pista embutida?",
+      "options": ["curva-u", "zigue-zague", "caracol", "diagonais"],
+      "default": "zigue-zague"
+    },
+    {
+      "id": "arquivoPista",
+      "type": "promptString",
+      "description": "Caminho da pista salva (ex.: tracks/pista1.json)",
+      "default": "tracks/pista1.json"
+    },
+    {
+      "id": "arquivoRede",
+      "type": "promptString",
+      "description": "Caminho da rede treinada (.npz)",
+      "default": "modelos/v1.npz"
+    },
+    {
+      "id": "arquivoCheckpoint",
+      "type": "promptString",
+      "description": "Caminho do checkpoint (.ga.npz) para retomar o treino",
+      "default": "checkpoints/geracao_0020.ga.npz"
+    }
+  ]
+}

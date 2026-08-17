@@ -1,0 +1,47 @@
+{
+  // Ctrl+Shift+P -> "Tasks: Run Task" -> escolha uma. "Rodar todos os
+  // testes" também roda com Ctrl+Shift+B, porque está marcada como a
+  // tarefa de build padrão.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Rodar todos os testes",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-c",
+        "import subprocess, sys; mods = ['test_nucleo','test_editor','test_training','test_netviz','test_calibra','test_persist','test_corrida','test_treino_ga','test_render']; falhou = [m for m in mods if subprocess.run([sys.executable, '-m', f'tests.{m}']).returncode != 0]; print(); print('FALHOU:', falhou) if falhou else print('todos os arquivos de teste passaram'); sys.exit(1 if falhou else 0)"
+      ],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Testes: núcleo",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "tests.test_nucleo"],
+      "group": "test",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Jogar",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "robo.game"],
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Editor de pista",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "robo.editor"],
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    }
+  ]
+}
