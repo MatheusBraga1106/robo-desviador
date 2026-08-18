@@ -1,0 +1,14 @@
+# Núcleo: simulador, jogo, editor, treino por neuroevolução.
+# Só estes dois bastam para rodar tudo que está neste repositório.
+numpy>=1.26
+pygame>=2.5
+
+# Opcional — só para treinar com GPU ou converter uma rede PyTorch com
+# robo.persist.de_torch. O simulador e a neuroevolução rodam sem torch.
+#
+# A instalação padrão (`pip install torch`) costuma trazer a versão só-CPU,
+# que ignora a placa de vídeo mesmo havendo uma. Para usar GPU de verdade:
+#
+#     pip install torch --index-url https://download.pytorch.org/whl/cu124
+#
+# torch>=2.6

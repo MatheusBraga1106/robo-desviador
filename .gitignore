@@ -1,0 +1,23 @@
+# Ambiente virtual — recriável com requirements.txt, e pesa GB por causa do torch
+.venv/
+venv/
+
+# Bytecode
+__pycache__/
+*.py[cod]
+
+# Saída de treino: checkpoints, redes salvas e o histórico de gerações.
+# São artefatos de execução, não código — quem clona gera os próprios.
+checkpoints/
+checkpoints_*/
+modelos/
+
+# Calibragem local do robô. É específica da SUA medição do hardware, então
+# cada pessoa gera a sua com a tecla P no jogo. Os valores de fábrica ficam
+# em robo/config.py, versionados.
+config.json
+
+# Sistema operacional / editores
+.DS_Store
+Thumbs.db
+*.swp
