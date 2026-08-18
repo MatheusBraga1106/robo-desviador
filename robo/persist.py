@@ -61,6 +61,15 @@ def salvar(caminho, camadas, ativacoes, cfg: SimConfig = None, **extra):
 
 def carregar(caminho) -> dict:
     d = np.load(caminho, allow_pickle=True)
+    if "n_camadas" not in d.files:
+        if "hiper_json" in d.files or "geracao" in d.files:
+            raise ValueError(
+                f"{caminho} é um checkpoint de população (.ga.npz), não uma rede "
+                f"pronta. Isso guarda TODOS os indivíduos do treino, para retomar "
+                f"com 'python -m brains.treino_ga --continuar {caminho}'. "
+                f"Para avaliar, use a rede campeã (ex.: checkpoints/melhor.npz).")
+        raise ValueError(f"{caminho} não parece uma rede salva por robo.persist "
+                         f"(falta a chave 'n_camadas').")
     n = int(d["n_camadas"])
     camadas = [(d[f"W{i}"], d[f"b{i}"]) for i in range(n)]
     ativacoes = [str(a) for a in d["ativacoes"]]

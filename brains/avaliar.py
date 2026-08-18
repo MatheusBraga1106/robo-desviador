@@ -168,6 +168,9 @@ def main(argv=None):
     except FileNotFoundError:
         print(f"rede não encontrada: {caminho}")
         return 1
+    except ValueError as e:
+        print(e)
+        return 1
 
     if brain.cfg is not None and brain.cfg.n_sensors != cfg.n_sensors:
         print(f"aviso: a rede foi treinada com {brain.cfg.n_sensors} sensores e a "
