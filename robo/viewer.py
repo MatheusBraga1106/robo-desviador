@@ -22,15 +22,34 @@ from .render import Camera, Renderer
 LARGURA_PAINEL_REDE = 300
 
 
+NIVEIS_AMOSTRA = (1.0, 0.5, 0.2, 0.1)
+"""Frações de população desenhadas, no ciclo da tecla V: 100% -> 50% -> 20% -> 10%.
+
+Numa população grande, desenhar todo mundo pesa o quadro e mais escurece a
+tela de robôs empilhados do que ajuda. A simulação continua rodando (e
+contando) todos — só o desenho fica mais leve, então a fitness e o
+`historico` não mudam com isto."""
+
+
 class Viewer:
     def __init__(self, track, cfg: SimConfig = None, brain=None,
                  tamanho=(1180, 760), titulo="Treinando", fps=None,
-                 mostrar_rede=True, detalhe_em=0, historico=None, hiper=None, pesos=None):
+                 mostrar_rede=True, detalhe_em=0, historico=None, hiper=None, pesos=None,
+                 fracao_visivel=1.0):
         self.track = track
         self.cfg = cfg or SimConfig()
         self.brain = brain
         self.tamanho = tamanho
         self.detalhe_em = detalhe_em
+
+        # quais robôs "de fundo" desenhar, quando a fração < 100%. Escolhida uma
+        # vez por tamanho de amostra (não a cada quadro), senão o conjunto
+        # mostrado piscaria de robô a cada frame em vez de acompanhar os mesmos
+        # indivíduos ao longo da geração.
+        self.fracao_visivel = (fracao_visivel if fracao_visivel in NIVEIS_AMOSTRA
+                               else min(NIVEIS_AMOSTRA, key=lambda f: abs(f - fracao_visivel)))
+        self._amostra_cache = None
+        self._amostra_chave = None
 
         # `historico` é a MESMA lista que o laço de treino vai preenchendo — o
         # viewer só lê. Guardar a referência (em vez de uma cópia) é o que faz
@@ -105,13 +124,32 @@ class Viewer:
                     self.mostrar_grafico = not self.mostrar_grafico
                 if ev.key == pygame.K_p and self.pesos is not None:
                     self.painel_pesos.alternar_edicao()
+                if ev.key == pygame.K_v:
+                    i = NIVEIS_AMOSTRA.index(self.fracao_visivel)
+                    self.fracao_visivel = NIVEIS_AMOSTRA[(i + 1) % len(NIVEIS_AMOSTRA)]
         return True
+
+    def _amostra(self, P):
+        """Índices dos robôs "de fundo" a desenhar, ou None para todos.
+
+        Sorteio fixo por (P, fração): assim a mesma leva de indivíduos continua
+        visível quadro a quadro, em vez de reamostrar e piscar gente diferente
+        a cada `on_step`.
+        """
+        if self.fracao_visivel >= 1.0 or P <= 1:
+            return None
+        n = max(1, round(P * self.fracao_visivel))
+        chave = (P, n)
+        if self._amostra_chave != chave:
+            self._amostra_cache = np.random.default_rng(0).choice(P, size=n, replace=False)
+            self._amostra_chave = chave
+        return self._amostra_cache
 
     # ------------------------------------------------------------------ #
     def desenhar(self, world, passo=0):
-        self.render.fundo()
-        self.render.desenhar_pista(self.track, self.cam)
-        self.render.desenhar_robos(world, self.cam, detalhe_em=self.detalhe_em)
+        self.render.desenhar_cenario_estatico(self.track, self.cam)
+        self.render.desenhar_robos(world, self.cam, detalhe_em=self.detalhe_em,
+                                   indices=self._amostra(world.P))
 
         if self.painel is not None and self.brain is not None:
             self.painel.draw(self.tela, self._inspecionar())
@@ -139,11 +177,13 @@ class Viewer:
         vivos = int((world.alive & ~world.finished).sum())
         chegou = int(world.finished.sum())
         prog = self.track.progress_along(world.pos)
+        amostra = (f"   desenhando {self.fracao_visivel:.0%}"
+                  if self.fracao_visivel < 1.0 and world.P > 1 else "")
         linhas = [
             f"passo {passo}/{self.cfg.max_steps}   {world.steps * self.cfg.dt:5.1f} s",
-            f"vivos {vivos}/{world.P}   chegaram {chegou}",
+            f"vivos {vivos}/{world.P}   chegaram {chegou}{amostra}",
             f"avanço melhor {prog.max():5.2f} m de {self.track.length:.2f} m",
-            "espaço=turbo  r=rede  g=gráfico  p=editar pesos  esc=sair",
+            "espaço=turbo  v=amostra  r=rede  g=gráfico  p=editar pesos  esc=sair",
         ]
         f = self.render.font_peq
         larg = max(f.size(t)[0] for t in linhas) + 24

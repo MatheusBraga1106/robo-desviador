@@ -718,6 +718,20 @@ não são de exibição nada é desenhado e o treino corre na velocidade máxima
 Para treinar sério assistindo de vez em quando, use algo como `--ver-a-cada 20`
 ou mais. Para só ver como está indo, `--ver-a-cada 5` e menos gerações.
 
+**Para desenhar só uma fração da população**, use `--ver-fracao`:
+
+```bash
+.venv\Scripts\python.exe -m brains.treino_ga --ver-populacao --ver-fracao 0.1
+```
+
+Com muitos robôs empilhados a tela vira uma mancha só, e cada círculo a mais
+custa um pouco de desenho. `--ver-fracao 0.1` desenha 10% da população por vez
+(os valores aceitos são 100%, 50%, 20% e 10% — qualquer outro número é
+arredondado para o mais próximo). A simulação continua rodando com todo
+mundo — fitness e `historico.csv` não mudam, só o desenho fica mais leve e
+legível. A tecla **V**, dentro da janela, troca essa fração ao vivo sem
+precisar reiniciar o treino.
+
 Na tela, o robô de índice 0 aparece destacado (cor cheia, com os cones dos
 sensores) e o resto da população em tom apagado. Dois detalhes que precisaram
 de correção para isso funcionar, e que valem saber caso você mexa no desenho:

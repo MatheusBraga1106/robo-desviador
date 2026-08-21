@@ -458,7 +458,7 @@ def carregar_checkpoint(caminho):
 def treinar(hiper: Hiperparametros, track, cfg: SimConfig, pasta=PASTA_PADRAO,
            geracao_inicial=0, pop_inicial=None, melhor_fitness_global=-np.inf,
            rng=None, dispositivo="cpu", ver=False, ver_a_cada=None, ver_populacao=False,
-           pista_ref=None):
+           ver_fracao=1.0, pista_ref=None):
     os.makedirs(pasta, exist_ok=True)
     pista_info = descrever(track, pista_ref)
     log_path = os.path.join(pasta, "historico.csv")
@@ -492,10 +492,14 @@ def treinar(hiper: Hiperparametros, track, cfg: SimConfig, pasta=PASTA_PADRAO,
         from robo.viewer import Viewer
         viewer = Viewer(track, cfg, brain=populacao,
                         titulo=f"Treino — população de {hiper.populacao}",
-                        historico=historico, hiper=hiper, pesos=PESOS)
+                        historico=historico, hiper=hiper, pesos=PESOS,
+                        fracao_visivel=ver_fracao)
         print(f"assistindo a população inteira a cada {ver_a_cada} gerações. "
               f"As gerações com janela rodam na velocidade da tela (bem mais "
               f"lentas que as outras) — aumente --ver-a-cada para treinar mais rápido.")
+        if ver_fracao < 1.0:
+            print(f"desenhando {ver_fracao:.0%} da população por vez (tecla V troca ao vivo); "
+                  f"a simulação continua com todo mundo, só o desenho é mais leve.")
     elif ver:
         from robo.training import EpisodeRunner as _Runner
         from robo.viewer import Viewer
@@ -659,6 +663,10 @@ def main(argv=None):
                    help="mostra a população inteira treinando, não só a campeã")
     p.add_argument("--ver-a-cada", type=int, default=padrao.ver_a_cada,
                    help="de quantas em quantas gerações abre a janela (com --ver ou --ver-populacao)")
+    p.add_argument("--ver-fracao", type=float, default=1.0,
+                   help="fração da população desenhada de cada vez, com --ver-populacao "
+                        "(ex: 0.1 = 10%%). A simulação continua com todo mundo, só o "
+                        "desenho fica mais leve. A tecla V troca isso ao vivo, na janela.")
     p.add_argument("--dispositivo", choices=["cpu", "cuda", "auto"], default="cpu",
                    help="onde roda a passada da rede. 'auto' usa GPU se achar uma disponível. "
                         "Só vale a pena com redes grandes (--camadas 64,64 ou mais) — "
@@ -672,6 +680,12 @@ def main(argv=None):
         return 0
 
     cfg = SimConfig.carregar_ou_padrao()
+    # bater atrapalha (a fitness já desconta em `punicao_batida`), mas não
+    # elimina: o robô fica livre para recuar, virar e retomar o traçado, em
+    # vez de morrer no primeiro toque. Quem não se recupera ainda sai pelo
+    # corte de `parado_limite_s` (5 s sem avançar), então o episódio não fica
+    # preso a alguém enroscado na parede.
+    cfg.collision_ends_episode = False
 
     # o checkpoint vem primeiro porque ele sabe em que pista treinou: retomar
     # sem dizer nada deve continuar no mesmo percurso, não voltar para o padrão
@@ -744,7 +758,7 @@ def main(argv=None):
     treinar(hiper, track, cfg, pasta=args.pasta, geracao_inicial=geracao_inicial,
            pop_inicial=pop_inicial, melhor_fitness_global=melhor_global,
            rng=rng_retomado, dispositivo=dispositivo, ver=args.ver,
-           ver_populacao=args.ver_populacao, pista_ref=pista_ref)
+           ver_populacao=args.ver_populacao, ver_fracao=args.ver_fracao, pista_ref=pista_ref)
     return 0
 
 

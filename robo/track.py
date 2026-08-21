@@ -28,6 +28,21 @@ from .geometry import (offset_polyline, polyline_segments, point_segment_distanc
 VAZIO_4 = np.zeros((0, 4))   # segmentos de parede [x1, y1, x2, y2]
 VAZIO_5 = np.zeros((0, 5))   # caixas [cx, cy, largura, comprimento, ângulo]
 
+GRADE_MIN_SEGMENTOS = 400
+"""Abaixo disso, a grade espacial nem chega a montar — testa contra todas as
+paredes de uma vez, como sempre foi.
+
+Não é só uma questão de "poucas paredes, não vale a pena": **medido**, entre
+umas 150 e 400 paredes a grade às vezes empata e às vezes *perde* para o
+caminho direto, dependendo do formato da pista — o filtro por célula ainda
+roda em laço Python (montar os candidatos de cada robô), e esse overhead pode
+superar a economia de comparar menos segmentos quando a redução não é grande
+o bastante. As pistas deste projeto (as embutidas e as em `tracks/`, até umas
+250 paredes) ficam todas abaixo deste número de propósito — o caminho direto
+já é a escolha certa para elas. A grade compensa mesmo a partir de pistas bem
+maiores (testado com 450+ segmentos: 2-3x mais rápido), o caso de uma pista
+desenhada muito comprida ou com muitas caixas."""
+
 
 @dataclass
 class Track:
@@ -87,6 +102,7 @@ class Track:
                   if len(p)]
         self.walls = np.concatenate(partes, axis=0) if partes else VAZIO_4.copy()
         self.floor = chao
+        self._precomputar_geometria_paredes()
 
         if self.checkpoints is None or self.centerline is not None:
             self.checkpoints = (_checkpoints_ao_longo(self.centerline, self.width,
@@ -104,6 +120,123 @@ class Track:
             self.start = np.zeros(3)
         if self.goal is None:
             self.goal = np.array([0.0, 0.0, 0.2])
+
+    def _precomputar_geometria_paredes(self):
+        """Aresta, comprimento² e normal de cada parede, calculados uma vez.
+
+        `ray_segment_hits` (sensores) e `point_segment_distance` (colisão) usam
+        isto em **todo** raycast/checagem de colisão — centenas de vezes por
+        episódio, para cada robô. Como a pista não muda dentro do episódio,
+        recalcular esses três valores a cada chamada era trabalho jogado fora.
+        Medido numa pista de ~1000 segmentos: só isto tirava uns 15% do tempo
+        de `World.step`.
+        """
+        edge = self.walls[:, 2:] - self.walls[:, :2]
+        comp = np.hypot(edge[:, 0], edge[:, 1])
+        comp_seguro = np.where(comp < 1e-12, 1.0, comp)
+        self.wall_edge = edge
+        self.wall_comp2 = comp_seguro ** 2
+        self.wall_normal = np.stack([-edge[:, 1] / comp_seguro, edge[:, 0] / comp_seguro], axis=1)
+        self._construir_grade()
+
+    def _construir_grade(self):
+        """Grade uniforme parede -> células, para não testar tudo contra tudo.
+
+        Sem isto, cada raycast e cada checagem de colisão comparam **todo**
+        robô contra **toda** parede — custo O(P·S). Numa pista pequena (as
+        embutidas deste projeto) isso já é rápido e não vale a pena complicar.
+        Numa pista desenhada longa, ou com muitas caixas, S cresce e o produto
+        P·S fica caro rápido, principalmente no `--ver-populacao`.
+
+        A grade divide a pista em células e guarda, por célula, quais paredes
+        têm o retângulo (AABB) tocando ali. `candidatos_proximos` depois só
+        precisa olhar as poucas células perto de cada ponto, não a pista
+        inteira — ver a prova de que isso nunca perde uma parede de verdade
+        no docstring daquele método.
+        """
+        S = len(self.walls)
+        self.usar_grade = S >= GRADE_MIN_SEGMENTOS
+        if not self.usar_grade:
+            self._grade = None
+            return
+
+        a, b = self.walls[:, :2], self.walls[:, 2:]
+        comp = np.hypot(self.wall_edge[:, 0], self.wall_edge[:, 1])
+        com_tamanho = comp[comp > 1e-9]
+        # célula do tamanho típico de um segmento: nem tão fina que cada
+        # parede espalhe por dezenas de células, nem tão grossa que uma
+        # célula só já contenha a pista quase inteira
+        celula = float(np.median(com_tamanho)) if len(com_tamanho) else 0.5
+        self._grade_celula = min(max(celula, 0.3), 2.0)
+
+        self._grade_origem = np.array([min(a[:, 0].min(), b[:, 0].min()),
+                                       min(a[:, 1].min(), b[:, 1].min())])
+
+        def celula_de(x, y):
+            return (np.floor((x - self._grade_origem[0]) / self._grade_celula).astype(np.int64),
+                    np.floor((y - self._grade_origem[1]) / self._grade_celula).astype(np.int64))
+
+        ix0, iy0 = celula_de(np.minimum(a[:, 0], b[:, 0]), np.minimum(a[:, 1], b[:, 1]))
+        ix1, iy1 = celula_de(np.maximum(a[:, 0], b[:, 0]), np.maximum(a[:, 1], b[:, 1]))
+
+        grade = {}
+        for s in range(S):
+            for cx in range(int(ix0[s]), int(ix1[s]) + 1):
+                for cy in range(int(iy0[s]), int(iy1[s]) + 1):
+                    grade.setdefault((cx, cy), []).append(s)
+        self._grade = {chave: np.array(segs, dtype=np.int64) for chave, segs in grade.items()}
+
+        # segmento "fantasma": comprimento zero, bem longe da pista. Serve só
+        # para preencher o array de candidatos quando um ponto do lote tem
+        # menos vizinhos que o máximo do lote — aresta nula nunca é "batida"
+        # nem fica perto de nada (ver `ray_segment_hits`/`point_segment_distance`),
+        # então não precisa de máscara separada.
+        longe = (self._grade_origem - 1000.0).reshape(1, 2)
+        self._grid_seg_a = np.concatenate([self.seg_a, longe], axis=0)
+        self._grid_seg_b = np.concatenate([self.seg_b, longe], axis=0)
+        self._grid_edge = np.concatenate([self.wall_edge, np.zeros((1, 2))], axis=0)
+        self._grid_normal = np.concatenate([self.wall_normal, np.zeros((1, 2))], axis=0)
+        self._grid_comp2 = np.concatenate([self.wall_comp2, np.ones(1)], axis=0)
+
+    def candidatos_proximos(self, pontos, raio) -> np.ndarray:
+        """Índices de paredes que podem estar a até `raio` de cada ponto.
+
+        `pontos`: (N, 2). Devolve (N, K): K é o maior número de candidatos que
+        algum ponto do lote teve; quem teve menos é preenchido com `len(walls)`
+        — o índice do segmento fantasma (ver `_construir_grade`), que nunca
+        bate em nada. Só chame isto com `self.usar_grade` True.
+
+        **Superconjunto seguro, não aproximação.** Toda parede cuja distância
+        verdadeira ao ponto seja ≤ `raio` está garantida no resultado; pode vir
+        parede a mais (nunca a menos). Prova: uma parede está contida no seu
+        retângulo (AABB), então a distância do ponto até o AABB é ≤ a distância
+        até a parede — ou seja, se a parede está a ≤ `raio`, o AABB toca o
+        círculo de raio `raio` ao redor do ponto. Buscar todas as células a até
+        `ceil(raio / tamanho_da_célula) + 1` células de distância (o `+1`
+        absorve a posição do ponto dentro da própria célula) cobre esse
+        círculo inteiro, e a parede foi registrada em toda célula que seu AABB
+        toca — inclusive a que o texto acima aponta.
+        """
+        pts = np.asarray(pontos, dtype=np.float64).reshape(-1, 2)
+        cx = np.floor((pts[:, 0] - self._grade_origem[0]) / self._grade_celula).astype(np.int64)
+        cy = np.floor((pts[:, 1] - self._grade_origem[1]) / self._grade_celula).astype(np.int64)
+        alcance = int(np.ceil(raio / self._grade_celula)) + 1
+
+        listas = []
+        maior = 1
+        for px, py in zip(cx.tolist(), cy.tolist()):
+            partes = [self._grade[c] for ix in range(px - alcance, px + alcance + 1)
+                     for iy in range(py - alcance, py + alcance + 1)
+                     if (c := (ix, iy)) in self._grade]
+            lista = np.concatenate(partes) if partes else np.zeros(0, dtype=np.int64)
+            listas.append(lista)
+            maior = max(maior, len(lista))
+
+        S = len(self.walls)
+        out = np.full((len(listas), maior), S, dtype=np.int64)
+        for i, lista in enumerate(listas):
+            out[i, :len(lista)] = lista
+        return out
 
     def _tem_linha(self) -> bool:
         return self.centerline is not None and len(self.centerline) >= 2
@@ -220,7 +353,39 @@ class Track:
         """Menor distância de cada ponto até alguma parede. points (..., 2)."""
         if not len(self.walls):
             return np.full(np.shape(points)[:-1], np.inf)
-        return point_segment_distance(np.asarray(points), self.seg_a, self.seg_b).min(axis=-1)
+        pts = np.asarray(points, dtype=np.float64)
+        if not self.usar_grade:
+            return point_segment_distance(pts, self.seg_a, self.seg_b,
+                                          edge=self.wall_edge, comp2=self.wall_comp2).min(axis=-1)
+        return self._distancia_com_grade(pts)
+
+    def _distancia_com_grade(self, pts: np.ndarray) -> np.ndarray:
+        """`distance_to_walls` acelerado pela grade, para pistas grandes.
+
+        A busca usa `raio = tamanho_da_célula` — de sobra para o raio do robô
+        (a escala que interessa aqui), então na prática quase todo ponto
+        acha a parede mais próxima de cara. Quem não achou nada dentro desse
+        raio só pode estar a mais que isso de qualquer parede — nesse caso a
+        garantia de `candidatos_proximos` não cobre a distância real, então
+        esses poucos pontos (tipicamente ninguém, ou gente isolada no meio de
+        uma área aberta) recalculam contra a pista inteira, exato como antes.
+        """
+        forma = pts.shape[:-1]
+        flat = pts.reshape(-1, 2)
+        raio = self._grade_celula
+
+        cand = self.candidatos_proximos(flat, raio)                  # (N, K)
+        dist = point_segment_distance(flat, self._grid_seg_a[cand], self._grid_seg_b[cand],
+                                      edge=self._grid_edge[cand],
+                                      comp2=self._grid_comp2[cand]).min(axis=-1)
+
+        incompleto = dist >= raio
+        if incompleto.any():
+            exato = point_segment_distance(flat[incompleto], self.seg_a, self.seg_b,
+                                           edge=self.wall_edge, comp2=self.wall_comp2).min(axis=-1)
+            dist = dist.copy()
+            dist[incompleto] = exato
+        return dist.reshape(forma)
 
     @property
     def length(self) -> float:

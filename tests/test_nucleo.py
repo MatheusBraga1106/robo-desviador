@@ -12,6 +12,7 @@ from robo.config import SimConfig, SensorConfig, RobotConfig
 from robo.geometry import ray_segment_hits, point_segment_distance, segments_cross
 from robo.physics import DifferentialDrive
 from robo.pistas import zigue_zague, diagonais
+from robo.sensors import UltrasonicArray
 from robo.track import Track
 from robo.world import World
 
@@ -403,6 +404,79 @@ def test_largada_e_objetivo_manuais():
     checar("rebuild não sobrescreve os manuais", np.allclose(t.start, [1.0, 0.2, 1.57]))
 
 
+# ---------------------------------------------------------------- grade espacial
+def _pista_grande():
+    """Pista sintética grande o bastante para ligar a grade espacial.
+
+    Curva senoidal comprida com caixas espalhadas: passa bem de
+    `GRADE_MIN_SEGMENTOS`, e a curvatura garante trechos onde paredes de
+    "voltas" diferentes ficam geometricamente perto sem estar perto no
+    traçado — o caso que quebraria uma filtragem ingênua por progresso ao
+    longo da linha central, mas não quebra a grade por células (que olha
+    posição real, não posição no traçado).
+    """
+    n = 220
+    xs = np.linspace(0.0, n * 0.3, n)
+    ys = np.sin(xs * 0.6) * 1.4
+    centerline = np.stack([xs, ys], axis=1)
+    obstaculos = np.array([[xs[i], ys[i] + 0.3, 0.15, 0.15, 0.3] for i in range(5, n, 7)])
+    return Track.from_centerline(centerline, width=0.9, obstacles=obstaculos, name="grande")
+
+
+def test_grade_liga_sozinha_pelo_tamanho_da_pista():
+    print("\ngrade espacial: liga sozinha conforme o tamanho da pista")
+    pequena = zigue_zague()
+    checar(f"pista pequena ({len(pequena.walls)} segmentos) não usa grade",
+           not pequena.usar_grade)
+    grande = _pista_grande()
+    checar(f"pista grande ({len(grande.walls)} segmentos) usa grade", grande.usar_grade)
+
+
+def test_grade_bate_com_forca_bruta_na_distancia():
+    print("\ngrade espacial: distance_to_walls bate com força bruta")
+    track = _pista_grande()
+    rng = np.random.default_rng(11)
+    x0, y0, x1, y1 = track.bounds
+    # inclui pontos fora dos limites também, para exercitar quem não acha
+    # nada perto (cai no recálculo exato, ver `_distancia_com_grade`)
+    pontos = rng.uniform([x0 - 1.0, y0 - 1.0], [x1 + 1.0, y1 + 1.0], (800, 2))
+
+    com_grade = track.distance_to_walls(pontos)
+    forca_bruta = point_segment_distance(pontos, track.seg_a, track.seg_b).min(axis=-1)
+
+    erro = float(np.abs(com_grade - forca_bruta).max())
+    checar("distâncias idênticas à força bruta", erro < 1e-9, f"erro máximo {erro:.2e}")
+
+
+def test_grade_bate_com_forca_bruta_no_raycast():
+    print("\ngrade espacial: leitura dos sensores bate com força bruta")
+    track = _pista_grande()
+    cfg = SimConfig()
+    cfg.sensor.count = 4
+    rng = np.random.default_rng(12)
+    P = 60
+    x0, y0, x1, y1 = track.bounds
+    pos = rng.uniform([x0, y0], [x1, y1], (P, 2))
+    theta = rng.uniform(-np.pi, np.pi, P)
+    dt_dispara_todos = cfg.sensor.reading_time * cfg.sensor.count
+
+    assert track.usar_grade
+    com_grade_arr = UltrasonicArray(cfg.sensor, P, cfg.robot.radius, np.random.default_rng(0))
+    com_grade_arr.update(pos, theta, track, dt_dispara_todos)
+    com_grade = com_grade_arr.last.copy()
+
+    track.usar_grade = False
+    try:
+        sem_grade_arr = UltrasonicArray(cfg.sensor, P, cfg.robot.radius, np.random.default_rng(0))
+        sem_grade_arr.update(pos, theta, track, dt_dispara_todos)
+        sem_grade = sem_grade_arr.last.copy()
+    finally:
+        track.usar_grade = True     # não vaza estado para o próximo teste
+
+    erro = float(np.abs(com_grade - sem_grade).max())
+    checar("leituras idênticas à força bruta", erro < 1e-9, f"erro máximo {erro:.2e}")
+
+
 def main():
     for fn in [
         test_raycast_contra_forca_bruta, test_distancia_ponto_segmento,
@@ -415,6 +489,9 @@ def main():
         test_teste_de_contencao_e_exato, test_remocao_pega_a_menor,
         test_receita_sobrevive_ao_salvar, test_rebuild_regenera,
         test_largada_e_objetivo_manuais,
+        test_grade_liga_sozinha_pelo_tamanho_da_pista,
+        test_grade_bate_com_forca_bruta_na_distancia,
+        test_grade_bate_com_forca_bruta_no_raycast,
         test_desempenho_populacao,
     ]:
         fn()

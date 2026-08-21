@@ -86,7 +86,11 @@ class UltrasonicArray:
         # o sensor fica na borda do corpo, não no centro
         origens = pos[:, None, None, :] + dirs * self.radius
 
-        t, cos_inc = ray_segment_hits(origens, dirs, track.seg_a, track.seg_b)
+        if track.usar_grade:
+            t, cos_inc = self._raycast_com_grade(origens, dirs, pos, track)
+        else:
+            t, cos_inc = ray_segment_hits(origens, dirs, track.seg_a, track.seg_b,
+                                          edge=track.wall_edge, normal=track.wall_normal)
 
         eco = (
             np.isfinite(t)
@@ -106,6 +110,33 @@ class UltrasonicArray:
 
         self.last[:, indices] = np.clip(leitura, 0.0, cfg.max_range)
         self.age[:, indices] = 0.0
+
+    def _raycast_com_grade(self, origens, dirs, pos, track):
+        """`ray_segment_hits` só contra as paredes perto de cada robô.
+
+        origens/dirs : (P, m, k, 2)
+        pos          : (P, 2) — centro do robô, não a origem exata do sensor
+
+        A busca usa o centro do robô, não a origem de cada sensor (que fica na
+        borda do corpo): folga de `self.radius` no raio da busca cobre essa
+        diferença. Como nenhum eco passa de `max_range`, todo segmento capaz
+        de gerar uma batida de verdade está a no máximo `max_range + radius`
+        do centro — a mesma conta usada aqui —, então isto nunca perde uma
+        parede que importaria (ver a prova em `Track.candidatos_proximos`).
+        Diferente de `distance_to_walls`, não precisa de recálculo exato para
+        ninguém: quem está fora desse raio não teria eco de qualquer jeito.
+        """
+        raio = self.cfg.max_range + self.radius
+        cand = track.candidatos_proximos(pos, raio)          # (P, K)
+        # insere os eixos (m, k) do raio entre o eixo do robô e o dos
+        # candidatos, para o broadcasting em `ray_segment_hits` alinhar contra
+        # `origens`/`dirs` em (P, m, k, 2)
+        eixos = (slice(None), None, None, slice(None), slice(None))
+        seg_a = track._grid_seg_a[cand][eixos]
+        seg_b = track._grid_seg_b[cand][eixos]
+        edge = track._grid_edge[cand][eixos]
+        normal = track._grid_normal[cand][eixos]
+        return ray_segment_hits(origens, dirs, seg_a, seg_b, edge=edge, normal=normal)
 
     # ------------------------------------------------------------------ #
     def observation(self) -> np.ndarray:

@@ -79,8 +79,37 @@ class Renderer:
         self.font = fonte or pygame.font.SysFont("consolas,menlo,monospace", 16)
         self.font_peq = fonte_peq or pygame.font.SysFont("consolas,menlo,monospace", 13)
         self._estrelas = None
+        self._cache_cenario = None
+        self._cache_chave = None
 
     # ------------------------------------------------------------------ #
+    def desenhar_cenario_estatico(self, track, cam: Camera, mostrar_checkpoints=True):
+        """`fundo()` + `desenhar_pista()`, cacheados numa Surface à parte.
+
+        Paredes, caixas, checkpoints, chão e o objetivo não se movem sozinhos —
+        só mudam se a pista for editada ou a câmera se mexer. Numa pista grande
+        redesenhar tudo isso pixel a pixel a cada quadro (a zebra das paredes
+        sozinha pode passar de 300 chamadas a `draw.line`) é trabalho jogado
+        fora quando a câmera está parada, que é o caso comum de assistir o
+        treino da população inteira. Aqui o desenho só é refeito quando a
+        pista, a câmera ou o tamanho da tela mudam; do contrário é um blit só.
+
+        Para câmera que persegue o robô (o modo "jogar"), isto invalida a cada
+        quadro e não ajuda — por isso só é usado no `Viewer`, não no jogo.
+        """
+        chave = (id(track), track.walls.shape[0], tuple(cam.center), cam.scale,
+                 self.surf.get_size(), mostrar_checkpoints)
+        if self._cache_cenario is None or self._cache_chave != chave:
+            cache = pygame.Surface(self.surf.get_size())
+            aux = Renderer(cache, self.font, self.font_peq)
+            aux._estrelas = self._estrelas
+            aux.fundo()
+            aux.desenhar_pista(track, cam, mostrar_checkpoints)
+            self._estrelas = aux._estrelas
+            self._cache_cenario = cache
+            self._cache_chave = chave
+        self.surf.blit(self._cache_cenario, (0, 0))
+
     def fundo(self):
         self.surf.fill(COR_FUNDO)
         if self._estrelas is None:
@@ -153,8 +182,8 @@ class Renderer:
             pygame.draw.circle(self.surf, cor, centro, r, 0 if r < raio // 3 else 3)
 
     # ------------------------------------------------------------------ #
-    def desenhar_robos(self, world, cam: Camera, detalhe_em=0):
-        """Desenha todos os robôs; o de índice `detalhe_em` ganha os sensores.
+    def desenhar_robos(self, world, cam: Camera, detalhe_em=0, indices=None):
+        """Desenha os robôs; o de índice `detalhe_em` ganha os sensores.
 
         O destacado é desenhado por **último**, de propósito. Numa população
         que ainda não aprendeu a se espalhar, é comum muitos indivíduos
@@ -162,11 +191,17 @@ class Renderer:
         chegaram a 52 sobrepostos no mesmo pixel do robô 0). Desenhar o
         destacado primeiro e os demais por cima faria ele sumir debaixo da
         pilha justamente quando você mais quer vê-lo.
+
+        `indices`: quais robôs "de fundo" desenhar, além do destacado (que é
+        sempre desenhado). `None` desenha todo mundo; passe um subconjunto
+        para aliviar o quadro numa população grande — a simulação continua
+        rodando com todos, só o desenho é que fica mais leve.
         """
         pos = cam.to_screen(world.pos)
         raio = cam.px(world.cfg.robot.radius)
 
-        for i in range(world.P):
+        alvo = range(world.P) if indices is None else indices
+        for i in alvo:
             if world.P > 1 and i == detalhe_em:
                 continue
             vivo = bool(world.alive[i]) and not world.finished[i]
